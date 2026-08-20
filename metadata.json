@@ -1,0 +1,6 @@
+{
+  "name": "WaStatus",
+  "description": "A WhatsApp status saver with full-screen image & video preview, multi-selection batch download, Direct Chat, and Cleaner features.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

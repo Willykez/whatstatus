@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        WaStatus uses the Storage Access Framework (SAF) to read WhatsApp's
+        status/media folders, so no broad storage permission is required to
+        browse statuses. POST_NOTIFICATIONS is only needed on Android 13+ if
+        the user enables "Status Alerts" in Settings.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
+        android:theme="@style/Theme.MyApplication">
+        <activity
+            android:name="com.willykez.wastatus.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:configChanges="uiMode|orientation|screenSize"
+            android:theme="@style/Theme.MyApplication">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            Opt-in "new status" auto-detect. This listener only ever reads
+            StatusBarNotification.packageName (which app a notification came
+            from) to decide whether to trigger a background folder re-scan —
+            it never reads notification title/text/content. Inactive unless
+            the user both enables "Auto-Detect New Statuses" in Settings AND
+            separately grants system-level Notification Access, which Android
+            requires a dedicated Settings screen for (it cannot be requested
+            as a normal runtime permission).
+        -->
+        <service
+            android:name="com.willykez.wastatus.notifications.WaStatusNotificationListener"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+
+</manifest>

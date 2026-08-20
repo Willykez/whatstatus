@@ -1,0 +1,123 @@
+name: WaStatus CI/CD - Test, Debug Build & Signed Release
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  test-and-build:
+    name: Test & Build Debug APK
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew || true
+
+    - name: Validate Gradle Wrapper
+      uses: gradle/wrapper-validation-action@v2
+      continue-on-error: true
+
+    - name: Ensure Debug Keystore Exists
+      run: |
+        if [ -f debug.keystore.base64 ]; then
+          base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore 2>/dev/null || true
+        fi
+        if [ ! -f debug.keystore ]; then
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+        fi
+
+    # Single test pass — real, fast, and blocking. The previous second full-suite
+    # run (continue-on-error, so it could never actually fail the build) was pure
+    # overhead and has been removed.
+    - name: Run Unit Tests
+      run: gradle testDebugUnitTest --no-daemon
+
+    - name: Build Debug APK
+      run: gradle assembleDebug --no-daemon
+
+    - name: Upload Debug APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: WaStatus-Debug-APK
+        path: app/build/outputs/apk/debug/*.apk
+        retention-days: 14
+
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: WaStatus-Test-Results
+        path: app/build/reports/tests/testDebugUnitTest/
+        retention-days: 7
+
+  build-release:
+    name: Build & Sign Release (APK + AAB)
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    # Signing secrets are only available to same-repo pushes to main/master —
+    # never on pull_request (forked PRs don't get secrets anyway, and this
+    # also avoids signing untrusted PR code).
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew || true
+
+    - name: Decode Release Keystore
+      env:
+        KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+      run: |
+        if [ -z "$KEYSTORE_B64" ]; then
+          echo "::error::KEYSTORE_B64 secret is not set — cannot sign the release build."
+          exit 1
+        fi
+        echo "$KEYSTORE_B64" | base64 -d > "${GITHUB_WORKSPACE}/release.keystore"
+
+    # isMinifyEnabled + isShrinkResources are on for the release build type
+    # (see app/build.gradle.kts), with proguard-rules.pro applied — a real
+    # shrunk, obfuscated, and signed build, not just a signed debug build.
+    - name: Build & Sign Release APK and AAB
+      env:
+        KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: gradle assembleRelease bundleRelease --no-daemon
+
+    - name: Upload Signed Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: WaStatus-Release-APK
+        path: app/build/outputs/apk/release/*.apk
+        retention-days: 30
+
+    - name: Upload Signed Release AAB
+      uses: actions/upload-artifact@v4
+      with:
+        name: WaStatus-Release-AAB
+        path: app/build/outputs/bundle/release/*.aab
+        retention-days: 30
+
+    - name: Clean Up Keystore
+      if: always()
+      run: rm -f "${GITHUB_WORKSPACE}/release.keystore"

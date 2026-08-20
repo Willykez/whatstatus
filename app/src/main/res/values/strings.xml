@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">WaStatus</string>
+    <string name="status_tab_images">Images</string>
+    <string name="status_tab_videos">Videos</string>
+    <string name="status_tab_saved">Saved</string>
+    <string name="nav_status">Status</string>
+    <string name="nav_direct_chat">Direct Chat</string>
+    <string name="nav_cleaner">Cleaner</string>
+    <string name="nav_settings">Settings</string>
+</resources>
