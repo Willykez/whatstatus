@@ -1,6 +1,7 @@
 [versions]
 agp = "9.1.1"
 kotlin = "2.2.10"
+composeCompiler = "1.8.0"
 googleDevtoolsKsp = "2.3.5"
 coreKtx = "1.18.0"
 lifecycleRuntimeKtx = "2.8.7"
@@ -67,4 +68,3 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 google-devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "googleDevtoolsKsp" }
-
