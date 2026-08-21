@@ -70,15 +70,6 @@ secrets {
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
-  // AGP 9's built-in Kotlin support resolves its own Kotlin compiler for
-  // :compileDebugKotlin independently of the org.jetbrains.kotlin.plugin.compose
-  // version declared above. If those two end up resolving to different Kotlin
-  // versions, the Compose compiler plugin jar becomes ABI-incompatible with the
-  // compiler process that loads it ("Plugin ... is incompatible with the current
-  // version of the compiler" / AbstractMethodError on ComposePluginRegistrar).
-  // Pin the compiler explicitly to the same version so they can't drift.
-  add("kotlinCompilerClasspath", "org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
-
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
