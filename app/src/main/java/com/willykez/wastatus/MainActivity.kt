@@ -407,7 +407,9 @@ fun WaStatusApp(repository: StatusRepository) {
             previewStatus?.let { status ->
                 StatusPreviewScreen(
                     status = status,
+                    filmstripItems = filteredStatuses,
                     onBack = { previewStatusId = null },
+                    onSelect = { item -> previewStatusId = item.id },
                     onSaveStatus = { id ->
                         scope.launch {
                             val saved = repository.saveStatus(id)

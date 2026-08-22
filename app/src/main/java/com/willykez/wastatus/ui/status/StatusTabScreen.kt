@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -24,12 +25,19 @@ import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import com.willykez.wastatus.model.StatusItem
 import com.willykez.wastatus.model.StatusTab
 import com.willykez.wastatus.ui.theme.LocalExtendedColors
+import kotlinx.coroutines.delay
 
 @Composable
 fun StatusTabScreen(
@@ -59,6 +68,20 @@ fun StatusTabScreen(
     onRequestFolderAccess: () -> Unit
 ) {
     val isMultiSelectMode = selectedIds.isNotEmpty() && currentTab != StatusTab.VAULT
+
+    // Samsung Gallery–style pinch-to-resize grid: pinch fingers together
+    // (zoom < 1) to pack in more, smaller columns; spread them apart
+    // (zoom > 1) to zoom in to fewer, bigger columns.
+    var gridColumns by remember { mutableIntStateOf(2) }
+    var pinchAccumulator by remember { mutableFloatStateOf(1f) }
+    var showColumnHint by remember { mutableStateOf(false) }
+    val minColumns = 2
+    val maxColumns = 5
+
+    LaunchedEffect(gridColumns) {
+        delay(700)
+        showColumnHint = false
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -148,7 +171,7 @@ fun StatusTabScreen(
                 statuses.isEmpty() -> EmptyStatusState(currentTab)
                 else -> {
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
+                        columns = GridCells.Fixed(gridColumns),
                         contentPadding = PaddingValues(
                             start = 16.dp,
                             end = 16.dp,
@@ -160,6 +183,30 @@ fun StatusTabScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .testTag("status_grid")
+                            .pointerInput(minColumns, maxColumns) {
+                                detectTransformGestures { _, _, zoom, _ ->
+                                    pinchAccumulator *= zoom
+                                    val step = 1.15f
+                                    when {
+                                        pinchAccumulator > step -> {
+                                            // Fingers spreading apart — zoom in, fewer/bigger columns.
+                                            if (gridColumns > minColumns) {
+                                                gridColumns -= 1
+                                                showColumnHint = true
+                                            }
+                                            pinchAccumulator = 1f
+                                        }
+                                        pinchAccumulator < 1f / step -> {
+                                            // Fingers pinching together — zoom out, more/smaller columns.
+                                            if (gridColumns < maxColumns) {
+                                                gridColumns += 1
+                                                showColumnHint = true
+                                            }
+                                            pinchAccumulator = 1f
+                                        }
+                                    }
+                                }
+                            }
                     ) {
                         items(statuses, key = { it.id }) { item ->
                             val isSelected = item.id in selectedIds
@@ -176,6 +223,26 @@ fun StatusTabScreen(
                         }
                     }
                 }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showColumnHint,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Surface(
+                color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text(
+                    text = "$gridColumns columns",
+                    color = androidx.compose.ui.graphics.Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                )
             }
         }
 
