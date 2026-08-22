@@ -71,6 +71,29 @@ data class CleanerCategory(
         get() = formatBytes(totalSizeBytes)
 }
 
+enum class CleanerFileType { IMAGE, VIDEO, AUDIO, GIF, DOCUMENT }
+
+/**
+ * One real file sitting inside a Cleaner category's folder — surfaced so the
+ * person can preview it and decide, file by file, whether to keep it or
+ * delete it, instead of only being able to wipe an entire category at once.
+ */
+data class CleanerFileItem(
+    val id: String,
+    val uri: Uri,
+    val categoryId: String,
+    val name: String,
+    val sizeBytes: Long,
+    val lastModifiedMillis: Long,
+    val mimeType: String,
+    val type: CleanerFileType,
+    /** e.g. "Personal" or "Business" — which linked WhatsApp account this came from. */
+    val sourceLabel: String = "Personal"
+) {
+    val sizeFormatted: String
+        get() = formatBytes(sizeBytes)
+}
+
 fun formatBytes(bytes: Long): String = when {
     bytes >= 1024 * 1024 * 1024 -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
     bytes >= 1024 * 1024 -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))

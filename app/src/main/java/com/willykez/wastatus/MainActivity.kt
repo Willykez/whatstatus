@@ -76,6 +76,9 @@ fun WaStatusApp(repository: StatusRepository) {
     val cleanerCategories by repository.cleanerCategories.collectAsState()
     val isLoadingStatuses by repository.isLoadingStatuses.collectAsState()
     val isLoadingCleaner by repository.isLoadingCleaner.collectAsState()
+    val cleanerFiles by repository.cleanerFiles.collectAsState()
+    val isLoadingCleanerFiles by repository.isLoadingCleanerFiles.collectAsState()
+    var openCleanerCategory by remember { mutableStateOf<com.willykez.wastatus.model.CleanerCategory?>(null) }
 
     val whatsappRootUri by repository.whatsappRootUri.collectAsState(initial = null)
     val whatsappBusinessRootUri by repository.whatsappBusinessRootUri.collectAsState(initial = null)
@@ -166,13 +169,17 @@ fun WaStatusApp(repository: StatusRepository) {
         }
     }
 
-    BackHandler(enabled = previewStatus != null || selectedIds.isNotEmpty() || isSearchActive) {
+    BackHandler(enabled = previewStatus != null || selectedIds.isNotEmpty() || isSearchActive || openCleanerCategory != null) {
         when {
             previewStatus != null -> previewStatusId = null
             selectedIds.isNotEmpty() -> selectedIds = emptySet()
             isSearchActive -> {
                 isSearchActive = false
                 searchQuery = ""
+            }
+            openCleanerCategory != null -> {
+                openCleanerCategory = null
+                repository.clearCleanerFiles()
             }
         }
     }
@@ -361,6 +368,43 @@ fun WaStatusApp(repository: StatusRepository) {
                             },
                             onRequestFolderAccess = {
                                 personalRootLauncher.launch(SafUtils.buildInitialUri(SafUtils.WHATSAPP_APP_ROOT_PATH))
+                            },
+                            openCategory = openCleanerCategory,
+                            categoryFiles = cleanerFiles,
+                            isLoadingFiles = isLoadingCleanerFiles,
+                            onOpenCategory = { category ->
+                                openCleanerCategory = category
+                                scope.launch { repository.listCategoryFiles(category.id) }
+                            },
+                            onCloseCategory = {
+                                openCleanerCategory = null
+                                repository.clearCleanerFiles()
+                            },
+                            onDeleteSelectedFiles = { catId, ids ->
+                                scope.launch {
+                                    val backup = repository.deleteCleanerFiles(catId, ids)
+                                    if (backup == null) {
+                                        Toast.makeText(context, "Nothing deleted", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val fileWord = if (backup.entries.size == 1) "file" else "files"
+                                        val result = snackbarHostState.showSnackbar(
+                                            message = "Deleted ${backup.entries.size} $fileWord from ${backup.categoryTitle}",
+                                            actionLabel = "Undo",
+                                            withDismissAction = true,
+                                            duration = SnackbarDuration.Long
+                                        )
+                                        if (result == SnackbarResult.ActionPerformed) {
+                                            val restored = repository.undoClean(backup)
+                                            Toast.makeText(
+                                                context,
+                                                if (restored) "Restored" else "Some files couldn't be restored",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        } else {
+                                            repository.commitCleanBackup(backup)
+                                        }
+                                    }
+                                }
                             }
                         )
                     }

@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.willykez.wastatus.model.AppThemeMode
 import com.willykez.wastatus.model.CleanerCategory
+import com.willykez.wastatus.model.CleanerFileItem
+import com.willykez.wastatus.model.CleanerFileType
 import com.willykez.wastatus.model.DirectChatMessage
 import com.willykez.wastatus.model.StatusItem
 import com.willykez.wastatus.model.StatusTab
@@ -94,6 +96,13 @@ class StatusRepository(context: Context) {
 
     private val _isLoadingCleaner = MutableStateFlow(false)
     val isLoadingCleaner: StateFlow<Boolean> = _isLoadingCleaner.asStateFlow()
+
+    private val _cleanerFiles = MutableStateFlow<List<CleanerFileItem>>(emptyList())
+    /** Individual files within whichever Cleaner category is currently expanded for preview. */
+    val cleanerFiles: StateFlow<List<CleanerFileItem>> = _cleanerFiles.asStateFlow()
+
+    private val _isLoadingCleanerFiles = MutableStateFlow(false)
+    val isLoadingCleanerFiles: StateFlow<Boolean> = _isLoadingCleanerFiles.asStateFlow()
 
     val whatsappRootUri = prefs.whatsappRootUri
     val whatsappBusinessRootUri = prefs.whatsappBusinessRootUri
@@ -429,6 +438,91 @@ class StatusRepository(context: Context) {
         }
 
         refreshCleanerCategories()
+        if (entries.isEmpty()) null else PendingCleanBackup(categoryId, categoryTitle, entries)
+    }
+
+    /**
+     * Lists every real file inside one Cleaner category's folder(s), across
+     * every granted account — so the person can preview each one (name,
+     * size, thumbnail) and choose which specific files to keep or delete,
+     * instead of only being able to wipe the whole category at once.
+     */
+    suspend fun listCategoryFiles(categoryId: String) = withContext(Dispatchers.IO) {
+        _isLoadingCleanerFiles.value = true
+        try {
+            val accountRoots = liveAccountRoots()
+            val category = CLEANER_FOLDERS.find { it.first == categoryId }
+            if (accountRoots.isEmpty() || category == null) {
+                _cleanerFiles.value = emptyList()
+                return@withContext
+            }
+            val (_, _, folderName) = category
+            val items = mutableListOf<CleanerFileItem>()
+            accountRoots.forEach { account ->
+                val folder = SafUtils.childFolder(account.mediaFolder, folderName)
+                val sentFolder = SafUtils.childFolder(folder, "Sent")
+                listOfNotNull(folder, sentFolder).forEach { dir ->
+                    dir.listFiles().filter { it.isFile }.forEach { doc ->
+                        val name = doc.name ?: return@forEach
+                        items += CleanerFileItem(
+                            id = doc.uri.toString(),
+                            uri = doc.uri,
+                            categoryId = categoryId,
+                            name = name,
+                            sizeBytes = doc.length(),
+                            lastModifiedMillis = doc.lastModified(),
+                            mimeType = doc.type ?: SafUtils.mimeTypeFromName(name),
+                            type = cleanerFileTypeFor(categoryId),
+                            sourceLabel = account.label
+                        )
+                    }
+                }
+            }
+            _cleanerFiles.value = items.sortedByDescending { it.lastModifiedMillis }
+        } finally {
+            _isLoadingCleanerFiles.value = false
+        }
+    }
+
+    /** Clears the loaded file list once the person backs out of a category's preview. */
+    fun clearCleanerFiles() {
+        _cleanerFiles.value = emptyList()
+    }
+
+    private fun cleanerFileTypeFor(categoryId: String): CleanerFileType = when (categoryId) {
+        "images" -> CleanerFileType.IMAGE
+        "videos" -> CleanerFileType.VIDEO
+        "voice" -> CleanerFileType.AUDIO
+        "gifs" -> CleanerFileType.GIF
+        else -> CleanerFileType.DOCUMENT
+    }
+
+    /**
+     * Deletes only the specifically chosen files within a category (backing
+     * each one up first, exactly like [cleanCategory]) — the selective
+     * counterpart to wiping an entire category at once.
+     */
+    suspend fun deleteCleanerFiles(categoryId: String, fileIds: Set<String>): PendingCleanBackup? = withContext(Dispatchers.IO) {
+        if (fileIds.isEmpty()) return@withContext null
+        val accountRoots = liveAccountRoots()
+        val category = CLEANER_FOLDERS.find { it.first == categoryId } ?: return@withContext null
+        val (_, categoryTitle, folderName) = category
+
+        val backupDir = File(appContext.cacheDir, "pending_clean/$categoryId").apply { mkdirs() }
+        val entries = mutableListOf<CleanBackupEntry>()
+
+        accountRoots.forEach { account ->
+            val folder = SafUtils.childFolder(account.mediaFolder, folderName)
+            val sentFolder = SafUtils.childFolder(folder, "Sent")
+            listOfNotNull(folder, sentFolder).forEach { dir ->
+                dir.listFiles()
+                    .filter { it.isFile && it.uri.toString() in fileIds }
+                    .forEach { doc -> backUpThenDelete(doc, dir, backupDir)?.let { entries += it } }
+            }
+        }
+
+        refreshCleanerCategories()
+        listCategoryFiles(categoryId)
         if (entries.isEmpty()) null else PendingCleanBackup(categoryId, categoryTitle, entries)
     }
 

@@ -93,6 +93,32 @@ jobs:
         fi
         echo "$KEYSTORE_B64" | base64 -d > "${GITHUB_WORKSPACE}/release.keystore"
 
+    # Fails fast with a clear, actionable message if KEYSTORE_B64, KEY_ALIAS,
+    # STORE_PASSWORD, or KEY_PASSWORD don't actually match — instead of
+    # burning ~3 minutes on a full assemble/bundle only to hit a cryptic
+    # KeytoolException deep inside :app:packageRelease.
+    - name: Validate Keystore Credentials
+      env:
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        if [ -z "$KEY_ALIAS" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ]; then
+          echo "::error::One or more of KEY_ALIAS, STORE_PASSWORD, KEY_PASSWORD secrets is empty."
+          exit 1
+        fi
+        if ! keytool -list \
+              -keystore "${GITHUB_WORKSPACE}/release.keystore" \
+              -storepass "$STORE_PASSWORD" \
+              -alias "$KEY_ALIAS" \
+              -keypass "$KEY_PASSWORD" > /dev/null 2>&1; then
+          echo "::error::Could not read alias '$KEY_ALIAS' from release.keystore with the given STORE_PASSWORD/KEY_PASSWORD."
+          echo "::error::This means KEYSTORE_B64 is corrupted/truncated, or STORE_PASSWORD/KEY_PASSWORD is wrong for this keystore."
+          echo "::error::Locally verify with: keytool -list -v -keystore release.keystore -storepass \$STORE_PASSWORD -alias \$KEY_ALIAS"
+          exit 1
+        fi
+        echo "Keystore credentials verified OK."
+
     # isMinifyEnabled + isShrinkResources are on for the release build type
     # (see app/build.gradle.kts), with proguard-rules.pro applied — a real
     # shrunk, obfuscated, and signed build, not just a signed debug build.
